@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+sns.set(style='darkgrid', palette="deep", font_scale=1.1, rc={"figure.figsize": [8, 5]})
+sns.set_context('paper')
 
 import sklearn
 from sklearn.impute import SimpleImputer
@@ -27,22 +29,47 @@ df_dtypes.columns = ['Count', 'Data Type']
 print(df_dtypes.groupby("Data Type").aggregate('count').reset_index())
 
 
+
 # EDA
 data.info() 
-# Categorical data
+# CATEGORICAL DATA
 data_cat = data.select_dtypes(exclude='number')
-unique_values = pd.DataFrame.from_records([(col, data_cat[col].nunique()) for col in data_cat.columns],
+col = data_cat.columns
+unique_values = pd.DataFrame.from_records([(col, data[col].nunique()) for col in data.columns],
                           columns=['Column_Name', 'Num_Unique']).sort_values(by=['Num_Unique'])
 print(unique_values)
-# Examine the infuence of sex and embarked on survival
+
+# Examine the infuence of sex and embarked on survived (=1)
 data.groupby('Sex')['Survived'].count()
+# Visualise the number of survivers
+ax = sns.countplot(data=data[data['Survived'] == 1], x='Sex')
+ax.set_ylabel("Number of survivers")
+plt.show()
+# Visualise deaths
+# ax = sns.countplot(data=data[data['Survived'] == 0], x='Sex')
+# ax.set_ylabel("Number of deaths")
+# plt.show()
+
+# View categorical feature relationship to deaths
+features = ['Pclass', 'SibSp', 'Embarked', 'Parch', 'Sex']
+fig, ax = plt.subplots(3, 2, figsize=(15, 10))
+for var, subplot in zip(features, ax.flatten()):
+    sns.countplot(x=var, data=data[data['Survived'] == 0], ax=subplot)
+    subplot.set_ylabel("Number of Deaths")
+plt.show()
 
 
-# Correlations
-corr_matrix = data.corr()
-#sns.heatmap(corr_matrix, annot=True)
-#plt.show()
+# NUMERICAL DATA
+data_num = data.select_dtypes(include='number')
+corr_matrix = data.corr(method='pearson')
+attrib = corr_matrix.nlargest(len(corr_matrix), 'Survived').index
+sns.heatmap(corr_matrix, annot=True, cbar=True, square=True, 
+            fmt='.2f', yticklabels=attrib.values, xticklabels=attrib.values)
+plt.show()
 
+# Scatter matrix
+pd.plotting.scatter_matrix(data=data_num, alpha=0.3, diagonal='kde')
+plt.show()
 
 # PREPROCESSING 
 # Drop the columns with excessive missing and unhelpful features 
