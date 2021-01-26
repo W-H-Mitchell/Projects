@@ -7,7 +7,6 @@ from sklearn.metrics import mean_squared_error, make_scorer
 from sklearn.linear_model import LinearRegression, BayesianRidge, Ridge
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import StratifiedKFold, cross_val_score, GridSearchCV
 import pandas as pd
 import numpy as np
@@ -22,7 +21,7 @@ sns.set_context('paper')
 
 
 # Collecting training data 
-data = pd.read_csv('data.csv') 
+data = pd.read_csv('datasets/real-estate/data.csv') 
 columns = [data.columns]
 index = data.index
 print(data.head())
@@ -136,6 +135,7 @@ data_imputed = pd.DataFrame(X, columns=data_num.columns, index=data_num.index)
 scaler = StandardScaler()
 X = pd.DataFrame(scaler.fit_transform(data_imputed), columns=data_imputed.columns, index=data_imputed.index)
 
+
 """
 # Encoding categorical data 
 X_cat = data.select_dtypes(include='number')
@@ -164,7 +164,7 @@ print(dtype_df.groupby("Column type").aggregate('count').reset_index())
 kfold = StratifiedKFold(n_splits=5)
 
 # Choose method to score model 
-scorer = make_scorer(mean_squared_error)
+# scorer = make_scorer(mean_squared_error)
 # Function for the scores, mean and std
 def display_scores(scores):
     print("Scores:", scores)
@@ -173,17 +173,27 @@ def display_scores(scores):
     
 # LinRegression
 lr = LinearRegression()
-lr_cv = cross_val_score(lr, X, y, cv=kfold,scoring= scorer)
+lr_cv = cross_val_score(lr, X, y, cv=kfold, scoring='r2')
 display_scores(lr_cv)
 
 # Ridge
 ridge = Ridge()
-ridge_cv = cross_val_score(ridge, X, y, cv=kfold,scoring= scorer)
+ridge_cv = cross_val_score(ridge, X, y, cv=kfold, scoring='r2')
 display_scores(ridge_cv)
+
+# Baynesian Ridge
+BRidge = BayesianRidge()
+BRidge_cv = cross_val_score(BRidge, X, y, cv=kfold,scoring='r2')
+display_scores(BRidge_cv)
+
+# SupportVector
+svr = SVR(kernel='linear')
+svr_cv = cross_val_score(svr, X, y, cv=kfold, scoring='r2')
+display_scores(svr_cv)
 
 # Rfr
 rfr = RandomForestRegressor()
-rfr_cv = cross_val_score(rfr, X, y, cv=kfold,scoring= scorer)
+rfr_cv = cross_val_score(rfr, X, y, cv=kfold,scoring='r2')
 display_scores(rfr_cv)
 
   

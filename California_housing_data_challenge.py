@@ -6,8 +6,8 @@ import urllib.request
 import sklearn
 assert sklearn.__version__ >= "0.20"
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import mean_squared_error, make_scorer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.metrics import r2_score, make_scorer
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, GridSearchCV
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.svm import SVR
@@ -52,7 +52,7 @@ print(f"Data shape: {housing.shape}")
 # HOLDOUT SET
 # from sklearn use random sampling method 
 train_set, test_set = train_test_split(housing, test_size=0.2, random_state=42)
-test_set.head()
+train_set.shape
 
 
 # EXPLORATORY DATA ANALYSIS
@@ -64,6 +64,12 @@ df_dtypes.groupby("Data Type").aggregate('count').reset_index()
 # Describe data. Nominal or ordinal categorical data? 
 print(housing.describe()) # Numerical data
 print(housing.describe(include=['object'])) # Categorical data
+# Number of unique values
+num_unique_counts = pd.DataFrame.from_records([(col, housing[col].nunique()) for col in housing.columns],
+                          columns=['Column_Name', 'Num_Unique']).sort_values(by=['Num_Unique'])
+print(num_unique_counts)
+
+
 
 # CATEGORICAL DATA 
 housing_cat = housing.select_dtypes(exclude='number')
@@ -87,24 +93,26 @@ plt.show()
 
 # Scatter plots
 # Location fig; radius of circles = population and color = median house price
-fig1 = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
     s=housing["population"]/100, label="population", figsize=(10,7),
     c="median_house_value", cmap=plt.get_cmap("jet"), colorbar=True,
     sharex=False) # jet is a predefined color map with hot and cold colors
 plt.legend()
 plt.show()
-# fig1.savefig("housing_prices_scatterplot.pdf")
+# plt.savefig("housing_prices_scatterplot.pdf")
 
 # Correlations witin the data
 corr_matrix = housing.corr(method='pearson')
 attributes = corr_matrix.nlargest(5, "median_house_value").index
-fig3 = pd.plotting.scatter_matrix(housing[attributes], figsize=(12, 12))
+pd.plotting.scatter_matrix(housing[attributes], figsize=(12, 12))
 plt.show()
-# fig3.savefig("scatter_matrix_plot.pdf")
+# plt.savefig("scatter_matrix_plot.pdf")
 
 # Heatmap of correlation matrix 
-corr_matrix["median_house_value"].sort_values(ascending=False)
-sns.heatmap(corr_matrix, annot=True, )
+features = corr_matrix.nlargest(len(corr_matrix), "median_house_value").index
+sns.heatmap(corr_matrix, annot=True, cbar=True, square=True,
+            yticklabels=features.values, xticklabels=features.values)
+plt.show()
 
 
 
@@ -113,25 +121,37 @@ sns.heatmap(corr_matrix, annot=True, )
 housing_prepared = train_set.drop("median_house_value", axis=1) # working with train set ONLY
 housing_labels = train_set["median_house_value"].copy()
 
-# Fill incomplete rows
+# Check for NaN's
+data_incomplete_rows = housing_prepared[housing_prepared.isna().any(axis=1)]
+print(data_incomplete_rows)
+print(housing_prepared[housing_prepared['ocean_proximity'].isna()]) # no empty categorical data
+
+# Fill incomplete numerical rows
 imputer = SimpleImputer(strategy='median')
-housing_num = housing_prepared.drop(['ocean_proximity'], axis=1) # imputer can only work on numerical attributes
+housing_num = housing_prepared.select_dtypes(include='number') # imputer can only work on numerical attributes
 imputer.fit(housing_num)
 X = imputer.transform(housing_num)
 housing_imputed = pd.DataFrame(X, columns=housing_num.columns, index=housing_num.index)
 
 # Standardization using StandardScaler
 scaler = StandardScaler()
-housing_scaled = pd.DataFrame(scaler.fit_transform(housing_imputed), columns=housing_imputed.columns, index=housing_imputed.index)
-# Label encoder; convert categorical data to numerical data
+housing_scaled = pd.DataFrame(scaler.fit_transform(housing_imputed), columns=housing_imputed.columns,
+                              index=housing_imputed.index)
+
+# Encode categorical data 
+temp_housing_cat = housing_prepared.select_dtypes(exclude='number')
+encoder = OrdinalEncoder()
+housing_enc = pd.DataFrame(encoder.fit_transform(temp_housing_cat), columns=temp_housing_cat.columns,
+                           index=temp_housing_cat.index)
+
+# Concat standardised
+X = pd.concat([housing_scaled, housing_enc], axis=1)
+X.shape
+pd.plotting.scatter_matrix(X, figsize=(12, 12))
+plt.show()
 
 
 # MODEL SELECTION
-# Kfolds
-kfold = StratifiedKFold(n_splits=5)
-
-# Choose method to score model 
-mse = make_scorer(mean_squared_error)
 # Function for the scores, mean and std
 def display_scores(scores):
     print("Scores:", scores)
@@ -139,32 +159,29 @@ def display_scores(scores):
     print("Standard deviation:", scores.std())
 
 # Selecting and instantiating the model
-lin_reg = LinearRegression()
+LinReg = LinearRegression()
 # Evaluate the model using cross validation
-cross_val = cross_val_score(estimator=lin_reg, X=housing_scaled, y=housing_labels,
-                     cv=kfold,scoring=mse)
+cross_val = cross_val_score(estimator=LinReg, X=X, y=housing_labels,
+                     cv=5, scoring='r2')
 # Lin Regression scores, mean and std
 display_scores(cross_val)
 
-# Selecting a second model
-rfc = RandomForestRegressor(random_state=42)
-# Evaluate the model; don't need .fit() and .predict() stages
-# Cross Validation: set up cross_val_score
-cv = cross_val_score(estimator=rfc,
-                     X=housing_scaled,
-                     y=housing_labels,
-                     cv=10,
-                     scoring=mse)
-# RandomForest scores, mean and std
-display_scores(cv)
+# Selecting and instantiating the model
+ridge = Ridge()
+# Evaluate the model using cross validation
+ridge_cv = cross_val_score(estimator=ridge, X=X, y=housing_labels,
+                     cv=5, scoring='r2')
+# Ridge scores, mean and std
+display_scores(cross_val)
 
-# Selecting a third model
-tree_reg = DecisionTreeRegressor()
-tree_cv = cross_val_score(estimator=tree_reg, X=housing_scaled, y=housing_labels,
-                     cv=10,
-                     scoring=mse)
-# DecisionTree scores, mean and std
-display_scores(tree_cv)
+# Selecting a second model
+rfr = RandomForestRegressor(random_state=42)
+# Cross Validation: set up cross_val_score
+rfr_cv = cross_val_score(estimator=rfr, X=X, y=housing_labels, cv=5,
+                     scoring='r2')
+# RandomForest scores, mean and std
+display_scores(rfr_cv)
+
 
 # Hyperparameter Tuning (dropped Lin_reg)
 # Parameter_dictionary for RandomForestRegressor
