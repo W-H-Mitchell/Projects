@@ -75,34 +75,36 @@ ax = sns.violinplot(x="ocean_proximity", y="median_house_value", data=housing)
 plt.xticks(rotation=90)
 plt.show()
 
-# NUMERICAL DATA 
-fig1 = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.1)
-plt.show()
-# fig1.savefig("visualization_plot.pdf")
 
+
+
+# NUMERICAL DATA 
+# Examine target variable
+sns.distplot(
+   housing['median_house_value'], norm_hist=False, kde=False, bins=40, hist_kws={"alpha": 1}
+   ).set(xlabel='House Price', ylabel='Count')
+plt.show()
+
+# Scatter plots
 # Location fig; radius of circles = population and color = median house price
-fig2, ax = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+fig1 = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
     s=housing["population"]/100, label="population", figsize=(10,7),
     c="median_house_value", cmap=plt.get_cmap("jet"), colorbar=True,
     sharex=False) # jet is a predefined color map with hot and cold colors
-ax.legend()
+plt.legend()
 plt.show()
-# fig2.savefig("housing_prices_scatterplot.pdf")
+# fig1.savefig("housing_prices_scatterplot.pdf")
 
 # Correlations witin the data
-attributes = ["median_house_value", "median_income", "total_rooms",
-              "housing_median_age"]
-fig3 = pd.plotting.scatter_matrix(housing[attributes], figsize=(12, 8))
+corr_matrix = housing.corr(method='pearson')
+attributes = corr_matrix.nlargest(5, "median_house_value").index
+fig3 = pd.plotting.scatter_matrix(housing[attributes], figsize=(12, 12))
 plt.show()
 # fig3.savefig("scatter_matrix_plot.pdf")
 
-# Highest correlation  with median house value 
-corr_matrix = housing.corr()
+# Heatmap of correlation matrix 
 corr_matrix["median_house_value"].sort_values(ascending=False)
-#housing.plot(kind="scatter", x="rooms_per_household", y="median_house_value",
-            #alpha=0.2)
-#plt.axis([0, 5, 0, 520000])
-#plt.show()
+sns.heatmap(corr_matrix, annot=True, )
 
 
 
