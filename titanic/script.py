@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split, cross_val_score, GridSearc
 
 # GET THE DATA
 # import training data 
-data = pd.read_csv('titanic/train.csv')
+data = pd.read_csv('Challenges/titanic/train.csv')
 print(data.head())
 columns = data.columns
 index = data.index
@@ -27,7 +27,6 @@ print(data.describe(include=['bool', 'object']))
 df_dtypes = data.dtypes.reset_index()
 df_dtypes.columns = ['Count', 'Data Type']
 print(df_dtypes.groupby("Data Type").aggregate('count').reset_index())
-
 
 
 # EDA
@@ -79,36 +78,37 @@ plt.show()
 data.isna().sum()
 incomplete_rows = data[data.isnull().any(axis=1)]
 print(incomplete_rows)
-
-# Drop the columns with excessive missing and unhelpful features 
+# Drop the columns with excessive missing values
 data = data.drop(['Cabin'], axis=1) 
 data = data.set_index('PassengerId') # set as index
-
 # Fill Age NaN's
 median_age = data['Age'].median() 
 data['Age'].fillna(median_age, inplace=True) # fill with median age 
 # Fill Embarked NaNs
 data['Embarked'] = data['Embarked'].fillna(data['Embarked'].value_counts().index[0])
 
-
-# Drop the labels from data 
-data = data.drop('Survived', axis=1) # create data minus labels 
+# Create label 
 y = data['Survived'].copy() # create labels 
+data = data.drop('Survived', axis=1) # create data minus labels 
 
 # Encode categorical data 
-X_cat = X[['Sex', 'Embarked']]
-encoder = OrdinalEncoder()
-X_cat_enc = pd.DataFrame(encoder.fit_transform(X_cat), columns=X_cat.columns, index=X_cat.index)
-# Standardize numerical data 
-X_num = X.drop(['Sex', 'Embarked'], axis=1)
-scaler = StandardScaler()
-X_scal = pd.DataFrame(scaler.fit_transform(X_num), columns=X_num.columns, index=X_num.index)
+data_cat = data.select_dtypes(exclude='number')
+enc = OrdinalEncoder()
+data_cat_enc = pd.DataFrame(encoder.fit_transform(data_cat), columns=data_cat.columns, index=data_cat.index)
 
-# Join categorical and numerical data, create validation set
-X_trans = X_cat_enc.join(X_scal)
-print(X_trans.info())
+# Standardize numerical data 
+data_num = data.select_dtypes(include='number')
+scaler = StandardScaler()
+data_scal = pd.DataFrame(scaler.fit_transform(data_num), columns=data_num.columns, index=data_num.index)
+
+# Create label and training datasets 
+X = pd.concat([data_scal, data_cat_enc], axis=1)
+print(f"Processed Training DataFrame Shape: {X.shape}")
+print(f"Labels (target) shape: {y.shape}")
 # Create a holdout set 
-X_train, X_val, y_train, y_val = train_test_split(X_trans, y, test_size=0.2, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
 
 # MODEL SELECTION and CROSS VALIDATION
 # Set the scorer 
@@ -119,45 +119,34 @@ def display_scores(scores):
     print("Mean:", scores.mean())
     print("Standard deviation:", scores.std())
 
-# Selecting and instantiating the model
+# LinReg model
 log_reg = LogisticRegression()
 # Cross validation
-cross_val = cross_val_score(estimator=log_reg,
-                     X=X_train,
-                     y=y_train,
-                     cv=5,
-                     scoring=acc)
+cross_val = cross_val_score(estimator=log_reg, X=X_train, y=y_train,
+                     cv=5, scoring=acc)
 # Lin Regression scores, mean and std
 display_scores(cross_val)
 
-# Selecting and instantiating the model
+# LinSVM model
 lin_svm = LinearSVC()
 # Cross validation
-cv_svm = cross_val_score(estimator=lin_svm,
-                     X=X_train,
-                     y=y_train,
-                     cv=5,
-                     scoring=acc)
+cv_svm = cross_val_score(estimator=lin_svm, X=X_train, y=y_train,
+                     cv=5, scoring=acc)
 # Lin SVM scores, mean and std
 display_scores(cv_svm)
 
-"""
-Try SVC
-"""
-
-# Selecting and instantiating the model
+# Ensemble model
 rfc = RandomForestClassifier(n_estimators=300, random_state=0)
 # Cross validation
-cv_rfc = cross_val_score(estimator=rfc,
-                     X=X_train,
-                     y=y_train,
-                     cv=5,
+cv_rfc = cross_val_score(estimator=rfc, X=X_train, y=y_train, cv=5,
                      scoring=acc)
 # Rand Forest scores, mean and std
 display_scores(cv_rfc)
 
+
+
 # HYPERPARAMETER TUNING 
-# LogReg Hyperparameters
+# RFR Hyperparameters
 parameters = {
     'C':[0.001, 0.01, 0.1, 1, 10, 100, 1000],
     'penalty': ['l1', 'l2'],
