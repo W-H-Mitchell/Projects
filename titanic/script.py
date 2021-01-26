@@ -7,7 +7,7 @@ sns.set_context('paper')
 
 import sklearn
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, make_scorer, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC, LinearSVC
@@ -71,19 +71,29 @@ plt.show()
 pd.plotting.scatter_matrix(data=data_num, alpha=0.3, diagonal='kde')
 plt.show()
 
+
+
+
 # PREPROCESSING 
+# Check for missing values 
+data.isna().sum()
+incomplete_rows = data[data.isnull().any(axis=1)]
+print(incomplete_rows)
+
 # Drop the columns with excessive missing and unhelpful features 
-data_temp = data.drop(['Name', 'Ticket', 'Cabin'], axis=1)
-# Check for missing values
-incomplete_rows = data_temp[data_temp.isnull().any(axis=1)]
-print(incomplete_rows) # 179 incomplete rows with NaN's in the age column
-median_age = data_temp['Age'].median() 
-data_temp['Age'].fillna(median_age, inplace=True) # fill with median age 
-data_temp = data_temp.dropna()
+data = data.drop(['Cabin'], axis=1) 
+data = data.set_index('PassengerId') # set as index
+
+# Fill Age NaN's
+median_age = data['Age'].median() 
+data['Age'].fillna(median_age, inplace=True) # fill with median age 
+# Fill Embarked NaNs
+data['Embarked'] = data['Embarked'].fillna(data['Embarked'].value_counts().index[0])
+
 
 # Drop the labels from data 
-X = data_temp.drop('Survived', axis=1) # create data minus labels 
-y = data_temp['Survived'].copy() # create labels 
+data = data.drop('Survived', axis=1) # create data minus labels 
+y = data['Survived'].copy() # create labels 
 
 # Encode categorical data 
 X_cat = X[['Sex', 'Embarked']]
