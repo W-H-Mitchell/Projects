@@ -5,23 +5,21 @@ import urllib.request
 # Scikit-Learn ≥0.20 is required
 import sklearn
 assert sklearn.__version__ >= "0.20"
-from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import make_scorer
-from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import mean_squared_error, make_scorer
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, GridSearchCV
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import GridSearchCV
+
 # Common imports
 import pandas as pd
 import numpy as np
 import os
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import seaborn as sns
 mpl.rc('axes', labelsize=12)
 mpl.rc('xtick', labelsize=10)
 mpl.rc('ytick', labelsize=10)
@@ -49,10 +47,7 @@ def load_housing_data(housing_path=HOUSING_PATH):
 
 housing = load_housing_data()
 print(housing.head())
-#print(housing.info())
-#print(housing.describe())
-#housing.plot(kind='hist', bins=50, figsize=(20,15))
-#plt.show()
+print(f"Data shape: {housing.shape}")
 
 # HOLDOUT SET
 # from sklearn use random sampling method 
@@ -61,29 +56,49 @@ test_set.head()
 
 
 # EXPLORATORY DATA ANALYSIS
+# Check data types and info
+df_dtypes = housing.dtypes.reset_index()
+df_dtypes.columns = ['Count', 'Data Type']
+df_dtypes.groupby("Data Type").aggregate('count').reset_index() 
+
+# Describe data. Nominal or ordinal categorical data? 
+print(housing.describe()) # Numerical data
+print(housing.describe(include=['object'])) # Categorical data
+
+# CATEGORICAL DATA 
+housing_cat = housing.select_dtypes(exclude='number')
+# Examine the variation in frequency of different neighborhoods
+sns.countplot(housing_cat['ocean_proximity'])
+plt.show()
+# Check relationship to Median House Value
+ax = sns.violinplot(x="ocean_proximity", y="median_house_value", data=housing)
+plt.xticks(rotation=90)
+plt.show()
+
+# NUMERICAL DATA 
 fig1 = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.1)
 plt.show()
-fig1.save_fig("visualization_plot.pdf")
+# fig1.savefig("visualization_plot.pdf")
 
-# create fig where radius of circles represents the population, and the color the median house price
-fig2 = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
+# Location fig; radius of circles = population and color = median house price
+fig2, ax = housing.plot(kind="scatter", x="longitude", y="latitude", alpha=0.4,
     s=housing["population"]/100, label="population", figsize=(10,7),
     c="median_house_value", cmap=plt.get_cmap("jet"), colorbar=True,
     sharex=False) # jet is a predefined color map with hot and cold colors
-plt.legend()
+ax.legend()
 plt.show()
-fig2.save_fig("housing_prices_scatterplot.pdf")
+# fig2.savefig("housing_prices_scatterplot.pdf")
 
 # Correlations witin the data
 attributes = ["median_house_value", "median_income", "total_rooms",
               "housing_median_age"]
 fig3 = pd.plotting.scatter_matrix(housing[attributes], figsize=(12, 8))
 plt.show()
-fig3.save_fig("scatter_matrix_plot.pdf")
+# fig3.savefig("scatter_matrix_plot.pdf")
 
 # Highest correlation  with median house value 
 corr_matrix = housing.corr()
-#corr_matrix["median_house_value"].sort_values(ascending=False)
+corr_matrix["median_house_value"].sort_values(ascending=False)
 #housing.plot(kind="scatter", x="rooms_per_household", y="median_house_value",
             #alpha=0.2)
 #plt.axis([0, 5, 0, 520000])
@@ -109,8 +124,11 @@ housing_scaled = pd.DataFrame(scaler.fit_transform(housing_imputed), columns=hou
 # Label encoder; convert categorical data to numerical data
 
 
-# MODEL SELECTION and CROSS VALIDATION
-# Set the scorer 
+# MODEL SELECTION
+# Kfolds
+kfold = StratifiedKFold(n_splits=5)
+
+# Choose method to score model 
 mse = make_scorer(mean_squared_error)
 # Function for the scores, mean and std
 def display_scores(scores):
@@ -121,11 +139,8 @@ def display_scores(scores):
 # Selecting and instantiating the model
 lin_reg = LinearRegression()
 # Evaluate the model using cross validation
-cross_val = cross_val_score(estimator=lin_reg,
-                     X=housing_scaled,
-                     y=housing_labels,
-                     cv=10,
-                     scoring=mse)
+cross_val = cross_val_score(estimator=lin_reg, X=housing_scaled, y=housing_labels,
+                     cv=kfold,scoring=mse)
 # Lin Regression scores, mean and std
 display_scores(cross_val)
 
@@ -143,9 +158,7 @@ display_scores(cv)
 
 # Selecting a third model
 tree_reg = DecisionTreeRegressor()
-tree_cv = cross_val_score(estimator=tree_reg,
-                     X=housing_scaled,
-                     y=housing_labels,
+tree_cv = cross_val_score(estimator=tree_reg, X=housing_scaled, y=housing_labels,
                      cv=10,
                      scoring=mse)
 # DecisionTree scores, mean and std
