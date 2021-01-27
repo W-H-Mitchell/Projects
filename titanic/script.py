@@ -7,12 +7,12 @@ sns.set_context('paper')
 
 import sklearn
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, make_scorer, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC, LinearSVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.model_selection import train_test_split, cross_val_score, RandomizedSearchCV
 
 # GET THE DATA
 # import training data 
@@ -93,7 +93,7 @@ data = data.drop('Survived', axis=1) # create data minus labels
 
 # Encode categorical data 
 data_cat = data.select_dtypes(exclude='number')
-enc = OrdinalEncoder()
+encoder = OneHotEncoder()
 data_cat_enc = pd.DataFrame(encoder.fit_transform(data_cat), columns=data_cat.columns, index=data_cat.index)
 
 # Standardize numerical data 
@@ -107,6 +107,7 @@ print(f"Processed Training DataFrame Shape: {X.shape}")
 print(f"Labels (target) shape: {y.shape}")
 # Create a holdout set 
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
 
 
 
@@ -145,49 +146,105 @@ display_scores(cv_rfc)
 
 
 
-# HYPERPARAMETER TUNING 
-# RFR Hyperparameters
-parameters = {
-    'C':[0.001, 0.01, 0.1, 1, 10, 100, 1000],
-    'penalty': ['l1', 'l2'],
-    'solver': ["newton-cg", "lbfgs", "liblinear"]
-    }
-# GridSearch
-grid_search = GridSearchCV(estimator=log_reg, 
-                        param_grid=parameters,
-                        scoring=acc,
-                        cv=5)    
-grid_result = grid_search.fit(X_train, y_train)
+# HYPERPARAMETER TUNING: RandomizedSearchCV
+# Current parameters in use
+base_rfc_params = rfc.get_params()
+print(base_rfc_params)
+# RFR Hyperparameter Tuning
+# Number of trees in random forest
+n_estimators = [int(x) for x in np.linspace(start = 200, stop = 2000, num = 10)]
+# Number of features to consider at every split
+max_features = ['auto', 'sqrt']
+# Maximum number of levels in tree
+max_depth = [int(x) for x in np.linspace(10, 110, num = 11)]
+max_depth.append(None)
+# Minimum number of samples required to split a node
+min_samples_split = [2, 5, 10]
+# Minimum number of samples required at each leaf node
+min_samples_leaf = [1, 2, 4]
+# Method of selecting samples for training each tree
+bootstrap = [True, False]
+
+# Create the random grid
+random_grid = {'n_estimators': n_estimators, 'max_features': max_features,
+               'max_depth': max_depth, 'min_samples_split': min_samples_split,
+               'min_samples_leaf': min_samples_leaf, 'bootstrap': bootstrap}
+print(random_grid)
+
+# RandomizedSearchCV
+rand_search = RandomizedSearchCV(estimator=rfc, param_distributions=random_grid,
+                        scoring=acc, cv=5, n_iter = 100, )    
+result = rand_search.fit(X_train, y_train)
 # Results summary
 # View best hyperparameters
-print('Best Penalty:', grid_result.best_estimator_.get_params()['penalty'])
-print('Best C:', grid_result.best_estimator_.get_params()['C'])
-print('Best C:', grid_result.best_estimator_.get_params()['solver'])
-best_lr_params = grid_result.best_params_
+best_rfc_params = result.best_params_
+print(best_rfc_params)
+
+# Evaluate Randomized Search on Validation Set
+def evaluate(model, test_features, test_labels):
+    predictions = model.predict(test_features)
+    errors = abs(predictions - test_labels)
+    mape = 100 * np.mean(errors / test_labels)
+    accuracy = 100 - mape
+    print('Model Performance')
+    print('Average Error: {:0.4f} degrees.'.format(np.mean(errors)))
+    print('Accuracy = {:0.2f}%.'.format(accuracy))
+    return accuracy
+
+# Baseline model accuracy
+rfc.fit(X_train, y_train)
+base_accuracy = evaluate(rfc, X_val, y_val)
+
+# Best model
+best_rand_model = result.best_estimator_
+best_accuracy = evaluate(best_rand_model, X_val, y_val)
 
 # Analysing Errors on Validation set
-lr = LogisticRegression(**best_lr_params) # Instantiate the model
-lr.fit(X_train, y_train) # Fit our model
-lr_predict = lr.predict(X_val) # Predict the holdout values
-c_matrix = (pd.DataFrame(confusion_matrix(y_val, lr_predict))
+rfc_opt = RandomForestClassifier(**best_rfc_params) # Instantiate the model
+rfc_opt.fit(X_train, y_train) # Fit our model
+preds = rfc_opt.predict(X_val) # Predict the holdout values
+c_matrix = (pd.DataFrame(confusion_matrix(y_val, preds))
  .rename_axis('Actual')
  .rename_axis('Predicted', axis='columns'))
 sns.heatmap(c_matrix, annot=True)
 plt.show()
+rfc_opt.score(X_val, y_val)
 
 
 
-# Try model on unseen test set
+
+# TEST ON UNSEEN DATA
 # Import the test data
-test = pd.read_csv('test.csv')
-print(test.head())
+X_test = pd.read_csv('Challenges/titanic/test.csv')
+print(f"Test data shape: {X_test.shape}")
+
+# Check for missing values 
+X_test.isna().sum()
+X_test = X_test.drop(['Cabin'], axis=1)
+X_test = X_test.set_index('PassengerId') # set as index
+# Fill Age NaN's
+median_age = X_test['Age'].median() 
+X_test['Age'].fillna(median_age, inplace=True) # fill with median age 
+# Fill Fare NaN
+X_test['Fare'].fillna(data['Fare'].value_counts().index[0])
+
+# Encode categorical data 
+test_cat = X_test.select_dtypes(exclude='number')
+enc = OrdinalEncoder()
+test_cat_enc = pd.DataFrame(enc.fit_transform(test_cat), columns=test_cat.columns, index=test_cat.index)
+
+# Standardize numerical data 
+test_num = X_test.select_dtypes(include='number')
+scaler = StandardScaler()
+test_scal = pd.DataFrame(scaler.fit_transform(test_num), columns=test_num.columns, index=test_num.index)
+
+# Create label and training datasets 
+test_labels = pd.concat([test_scal, test_cat_enc], axis=1)
 
 # Try model
-test_lr = LogisticRegression(**best_lr_params)
-test_lr.fit(X_test, y_test)
-test_predictions_probs = lr.predict_proba(X_test)
-test_predictions = lr.predict(X_test)
+test_labels['predictions'] = rfc.predict(test_labels)
+print(test_labels.head())
 
-test_accuracy = accuracy_score(y_test, test_predictions)
-print("My predictions for the survival rate onboard Titanic have an accuracy of: {1:.2f}".format(test_accuracy))
-"""
+# CSV for submission 
+survival_submission = test_labels['predictions']
+survival_submission.to_csv('Titanic Submission File.csv')
